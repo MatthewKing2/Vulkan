@@ -1,11 +1,13 @@
-// #include <vulkan/vulkan.h>  //Include the Vulkan header which provides the functions, structures and enumerations.  
-#define GLFW_INCLUDE_VULKAN     // Replace vulkan header with the GLFW one (this automaticlaly loads the vulkan one)
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
 #include <iostream>
 #include <stdexcept>
-#include <cstdlib>
 #include <vector>
+#include <cstring>
+#include <cstdlib>
 #include <optional>
+#include <set>
 
 
 // Validation Layers (enblaed or disabled at compile time, based on NDEBUG flag)
@@ -28,10 +30,13 @@ private:
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;   // This is the GPU Physical Device we are using (struct of info about it)
     struct QueueFamilyIndices {     // Struct that holds the different types of Qs
         std::optional<uint32_t> graphicsFamily;
-        bool isComplete() { return graphicsFamily.has_value(); }
+        std::optional<uint32_t> presentFamily;
+        bool isComplete() { return graphicsFamily.has_value() && presentFamily.has_value(); }
     };
     VkDevice device;                // Logical Device 
     VkQueue graphicsQueue;          // Handler to the Graphics Q (so we can interface it)
+    VkQueue presentQueue;           // Handler to the Presnet Q (present shit to the screen)
+    VkSurfaceKHR surface;           // surface that will be drawn to 
 
 public:
     void run() {
@@ -53,26 +58,42 @@ private:
 
 
 
+    // Need to create the "Surface" (links the vulkan --> rendering window b/c platform agnostic)
+    // ----------------------------------------------------------------------------------------------------------------------------------
+    void createSurface() {
+        if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) { throw std::runtime_error("failed to create window surface!"); }
+    }
+    // ----------------------------------------------------------------------------------------------------------------------------------
+
+
     // Creat the Logical Device so that you can interface the Physical Device (Now that we have a Physical Device, and know what Q families we have)
     // ----------------------------------------------------------------------------------------------------------------------------------
         void createLogicalDevice() {
             // Specifying the queues to be created
-                QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-                VkDeviceQueueCreateInfo queueCreateInfo{};
-                queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-                queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-                queueCreateInfo.queueCount = 1;
             // Specify Qs priority (determines which Q scheduler sends to GPU first)
+                QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+                std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+                std::set<uint32_t> uniqueQueueFamilies = {
+                    indices.graphicsFamily.value(),
+                    indices.presentFamily.value()
+                };
                 float queuePriority = 1.0f;
-                queueCreateInfo.pQueuePriorities = &queuePriority;
+                for (uint32_t queueFamily : uniqueQueueFamilies) {
+                    VkDeviceQueueCreateInfo queueCreateInfo{};
+                    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+                    queueCreateInfo.queueFamilyIndex = queueFamily;
+                    queueCreateInfo.queueCount = 1;
+                    queueCreateInfo.pQueuePriorities = &queuePriority;
+                    queueCreateInfos.push_back(queueCreateInfo);
+                }
             // Define the features this logical device has (based on physical device)
                 VkPhysicalDeviceFeatures deviceFeatures{};  // No definition ==> all memeber == FALSE (ie DNE)
             // Create the Logical Device 
                 VkDeviceCreateInfo createInfo{};
                 createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
             // Add pointers to the queue creation info and device features structs 
-                createInfo.pQueueCreateInfos = &queueCreateInfo;
-                createInfo.queueCreateInfoCount = 1;
+                createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+                createInfo.pQueueCreateInfos = queueCreateInfos.data();
                 createInfo.pEnabledFeatures = &deviceFeatures;
             // Some non sense to be compatible with older versoins of vulkan 
                 createInfo.enabledExtensionCount = 0;
@@ -85,6 +106,8 @@ private:
                     // Specifying to the instance information about: // Qs // PHysical Device // Suprted features
             // Retrieving queue handles 
                 vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+                vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+            // Done 
             std::cout << "Logical Device Created!" << std::endl;
         }
     // ----------------------------------------------------------------------------------------------------------------------------------
@@ -104,6 +127,14 @@ private:
             int i = 0;
             for (const auto& queueFamily : queueFamilies) {
                 if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) { indices.graphicsFamily = i; }
+                
+                // Something something about the Q needing the right presneting mode for the surface 
+                VkBool32 presentSupport = false;
+                vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+                if (presentSupport) { indices.presentFamily = i; }
+
+                if (indices.isComplete()) { break; }
+
                 i++;
             }
         return indices;
@@ -175,6 +206,7 @@ private:
     void initVulkan() {
         createInstance();           // Create Vulkan Instance
         // setupDebugMessenger();   // I skipped this part of tutorial
+        createSurface();            // Something that links Vulkan agnostic API to Windows Rendering Screen
         pickPhysicalDevice();       // Pick a Physical Device, and determine its feature set / Qs
         createLogicalDevice();      // Create Logical Device to interface Physical Device
     }
@@ -259,6 +291,7 @@ private:
 
     void cleanup() {
         vkDestroyDevice(device, nullptr);       // Destorys the logical device 
+        vkDestroySurfaceKHR(instance, surface, nullptr);    // Destore the surface 
         vkDestroyInstance(instance, nullptr);   // Desotry the vulkan instance
         glfwDestroyWindow(window);              // destory the window
         glfwTerminate();                        // turn off glfw 
