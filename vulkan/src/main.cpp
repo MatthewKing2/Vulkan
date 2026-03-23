@@ -53,6 +53,7 @@ private:
     VkExtent2D swapChainExtent;                 // Chain Extent 
     std::vector<VkImageView> swapChainImageViews;   // Vector to store the VIEWs into Images in the Swap Chain 
     VkPipelineLayout pipelineLayout;            // Struct defining the pipeline layout 
+    VkRenderPass renderPass;                    // Struct defining the render pass
 
 public:
     void run() {
@@ -71,6 +72,46 @@ private:
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);    // Args = Width, Height, Title, Monitor*, OpenGL*. 
     }
+
+    // Define the Render Pass (tell vulkan about frame buffer attachments, color and depth buffers, and samples per each of them) 
+    // ----------------------------------------------------------------------------------------------------------------------------------
+    void createRenderPass(){
+        // In our case we'll have just a single color buffer attachment represented by one of the images from the swap chain.
+            VkAttachmentDescription colorAttachment{};
+            colorAttachment.format = swapChainImageFormat;
+            colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT; // 1 sample 
+        // Define the Load Op and Store OP 
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // In our case we're going to use the clear operation to clear the framebuffer to black before drawing a new frame. 
+            colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // We're interested in seeing the rendered triangle on the screen, so we're going with the store operation here.
+        // Not using the stencil bufer, so dont care about this 
+            colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        // Some more non sense about iamges something or other 
+            colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        // Apparently you can make multiple passes (no clue what a pass is) and this can get better perf, but we dont care 
+            VkAttachmentReference colorAttachmentRef{};
+            colorAttachmentRef.attachment = 0;
+            colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        // Subpass (type of pass) 
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorAttachmentRef;
+        // Render Pass: 
+            VkRenderPassCreateInfo renderPassInfo{};
+            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            renderPassInfo.attachmentCount = 1;
+            renderPassInfo.pAttachments = &colorAttachment;
+            renderPassInfo.subpassCount = 1;
+            renderPassInfo.pSubpasses = &subpass;
+        // Create the render pass object 
+            if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) { throw std::runtime_error("failed to create render pass!"); }
+        // Print Debug 
+            std::cout << "Created the Render Pass!" << std::endl;
+    }
+    // ----------------------------------------------------------------------------------------------------------------------------------
+
 
     // Create the Graphis Peipeline 
     // ----------------------------------------------------------------------------------------------------------------------------------
@@ -590,6 +631,7 @@ private:
         createLogicalDevice();      // Create Logical Device to interface Physical Device
         createSwapChain();          // Create Swap Chain (images to be written to the screen)
         createImageViews();         // Create the Views into the images in the above Swap Chain
+        createRenderPass();         // Define the Render Pass
         createGraphicsPipeline();   // Create the Graphics Pipeline 
     }
 
@@ -673,6 +715,7 @@ private:
 
     void cleanup() {
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);   // Destory the peipleine layout 
+        vkDestroyRenderPass(device, renderPass, nullptr);           // Desotry the render pass
         for (auto imageView : swapChainImageViews) { vkDestroyImageView(device, imageView, nullptr); }  // For each image view (wrt to the swap chain) we need to destory it (becase we manually created it)
         vkDestroySwapchainKHR(device, swapChain, nullptr);  // Destroy the swap chain
         vkDestroyDevice(device, nullptr);       // Destorys the logical device 
