@@ -55,6 +55,7 @@ private:
     VkPipelineLayout pipelineLayout;            // Struct defining the pipeline layout 
     VkRenderPass renderPass;                    // Struct defining the render pass
     VkPipeline graphicsPipeline;                // The Graphics Peipline (top dawg)
+    std::vector<VkFramebuffer> swapChainFramebuffers;   // Hold the frame buffers 
 
 public:
     void run() {
@@ -73,6 +74,32 @@ private:
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);    // Args = Width, Height, Title, Monitor*, OpenGL*. 
     }
+
+
+    // Create the Frame Buffer 
+    // ----------------------------------------------------------------------------------------------------------------------------------
+    void createFramebuffers(){
+        // Resize the frame buffers container to be able to hold the size of the swap chain vector (same size)
+            swapChainFramebuffers.resize(swapChainImageViews.size());
+        // For each image view (recall that an image view is what is in the swap chain, each image view maps to an image)
+            for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+                VkImageView attachments[] = { swapChainImageViews[i] };
+                VkFramebufferCreateInfo framebufferInfo{};
+                framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+                framebufferInfo.renderPass = renderPass;
+                framebufferInfo.attachmentCount = 1;
+                framebufferInfo.pAttachments = attachments;
+                framebufferInfo.width = swapChainExtent.width;
+                framebufferInfo.height = swapChainExtent.height;
+                framebufferInfo.layers = 1;
+                if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) { throw std::runtime_error("failed to create framebuffer!"); }
+                std::cout << "Frame Buffer created #" << i << std::endl;
+            }
+        // Print Debug: 
+        std::cout << "Done creating Frame Buffers" << std::endl;
+    }
+    // ----------------------------------------------------------------------------------------------------------------------------------
+
 
     // Define the Render Pass (tell vulkan about frame buffer attachments, color and depth buffers, and samples per each of them) 
     // ----------------------------------------------------------------------------------------------------------------------------------
@@ -660,6 +687,7 @@ private:
         createImageViews();         // Create the Views into the images in the above Swap Chain
         createRenderPass();         // Define the Render Pass
         createGraphicsPipeline();   // Create the Graphics Pipeline 
+        createFramebuffers();       // Create the frame buffers 
     }
 
 
@@ -741,6 +769,7 @@ private:
     }
 
     void cleanup() {
+        for (auto framebuffer : swapChainFramebuffers) { vkDestroyFramebuffer(device, framebuffer, nullptr); }  // destory each frame buffer (vector of buffers that map 1:1 with image views who map 1:1 with iamges)
         vkDestroyPipeline(device, graphicsPipeline, nullptr);       // Destroy the piepline 
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);   // Destory the peipleine layout 
         vkDestroyRenderPass(device, renderPass, nullptr);           // Desotry the render pass
